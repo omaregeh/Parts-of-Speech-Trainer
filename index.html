@@ -130,7 +130,7 @@
 
 <script>
 /* ======= Set your backend URL here ======= */
-const API_BASE = "https://YOUR-BACKEND-URL"; // will replace in a later step
+const API_BASE = "https://pos-trainer-api.onrender.com";
 
 const api = (p, params={}) => fetch(`${API_BASE}${p}` + (Object.keys(params).length?`?${new URLSearchParams(params)}`:''));
 
