@@ -11,7 +11,7 @@ import requests
 
 # ---------- CORS (IMPORTANT) ----------
 # Replace YOUR-USERNAME with your GitHub username (no trailing slash)
-GITHUB_PAGES_ORIGIN = "https://YOUR-USERNAME.github.io"
+GITHUB_PAGES_ORIGIN = "https://omaregeh.github.io"
 
 app = FastAPI()
 app.add_middleware(
