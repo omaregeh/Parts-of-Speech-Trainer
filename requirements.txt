@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+spacy>=3.7
+requests
