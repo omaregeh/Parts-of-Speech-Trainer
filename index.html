@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grammar Trainer — POS • Phrases • Clauses</title>
+<style>
+  :root { --b:#e5e7eb; --ok:#198754; --bad:#c0392b; --fg:#111; --muted:#666; --accent:#0057d9; --chipbg:#f8f9fb; }
+  *{ box-sizing:border-box }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; color:var(--fg); background:#fff; }
+  body.noscroll { overflow: hidden; }
+  header { padding: 12px 16px; border-bottom:1px solid var(--b); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  button, select { font: inherit; padding:8px 12px; border:1px solid var(--b); border-radius:8px; background:#f8f8f8; cursor:pointer; }
+  button.primary { border-color: var(--accent); }
+  .panel { border:1px solid var(--b); border-radius:12px; padding:14px; background:#fff; margin:16px auto; max-width:1080px; }
+  main { max-width: 1080px; margin: 0 auto 120px; padding: 0 16px; }
+  .sentence { font-size: 22px; line-height:1.8; padding:12px; border:1px dashed var(--b); border-radius:10px; }
+  .tok { padding:2px 4px; border-radius:6px; margin: 0 2px; display:inline-block; cursor:pointer; }
+  .tok.selected { outline:2px solid var(--accent); box-shadow: inset 0 -8px 0 rgba(0,87,217,.15); }
+  .ok { color: var(--ok); font-weight:600; } .bad { color: var(--bad); font-weight:600; } .muted { color: var(--muted); }
+  .q { margin-top:8px; } .pill { padding:6px 10px; border-radius:999px; border:1px solid var(--b); cursor:pointer; background:#fafafa; }
+  .pill.sel { outline:2px solid var(--accent); } .row { display:flex; gap:10px; flex-wrap:wrap; }
+  .meta { font-size: 12px; color: var(--muted); margin-top:6px; }
+  .why { background:#f8f9fb; border:1px dashed var(--b); border-radius:8px; padding:8px 10px; margin-top:8px; display:none; white-space:pre-wrap; font-size:13px; }
+  .why.show { display:block; }
+
+  /* Drawer / flyout (wider + guaranteed scroll) */
+  .drawer {
+    position: fixed; right: 0; top: 0; height: 100vh;
+    width: 420px; max-width: 96vw;
+    background:#fff; border-left:1px solid var(--b);
+    transform: translateX(100%); transition: transform .2s ease;
+    z-index: 50; display:flex; flex-direction:column;
+    overscroll-behavior: contain; touch-action: pan-y;
+    box-shadow: -8px 0 24px rgba(0,0,0,.06);
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer header { border-bottom:1px solid var(--b); flex: 0 0 auto; }
+  .drawer h2 { font-size: 18px; margin: 0; }
+
+  .drawer .games {
+    flex: 1 1 auto; overflow-y: auto !important;
+    padding: 12px; display:grid; gap:12px; scrollbar-gutter: stable;
+  }
+
+  .group { border:1px solid var(--b); border-radius:10px; overflow:hidden; }
+  .group .title {
+    font-weight:700; padding:10px 12px; background:#f7f7f7; border-bottom:1px solid var(--b);
+    position: sticky; top: 0; z-index: 1;
+  }
+  .group .body { padding:10px; display:grid; gap:6px; }
+  .group .body button { text-align:left; padding:10px 12px; border:1px solid var(--b); background:#fff; border-radius:8px; cursor:pointer; }
+
+  .hamburger { width:36px; height:36px; border:1px solid var(--b); border-radius:8px; background:#fafafa; display:grid; place-items:center; cursor:pointer; }
+  .hamburger span{ display:block; width:18px; height:2px; background:#333; position:relative; }
+  .hamburger span::before, .hamburger span::after{ content:""; position:absolute; left:0; width:100%; height:2px; background:#333; }
+  .hamburger span::before{ top:-6px } .hamburger span::after{ top:6px }
+
+  .full-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap:8px; }
+  .chip { border:1px solid var(--b); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:6px; background:var(--chipbg); }
+  .chip .w { text-align:center; font-weight:600; } .chip select { padding:6px; }
+  .chip.correct { outline:2px solid rgba(25,135,84,.6); } .chip.wrong { outline:2px solid rgba(192,57,43,.5); }
+
+  @media (max-width: 600px){ .drawer { width: 96vw; } }
+</style>
+</head>
+<body>
+  <header>
+    <button class="hamburger" id="hamburger" aria-label="Open games"><span></span></button>
+    <strong id="gameTitle">Focus: Verbs</strong>
+    <span class="muted">Source:</span>
+    <select id="source">
+      <option value="tatoeba">Tatoeba</option>
+      <option value="wordnik">Wordnik</option>
+      <option value="local">Local</option>
+    </select>
+    <button id="next" class="primary">New sentence</button>
+    <span id="status" class="muted"></span>
+  </header>
+
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <header>
+      <div style="padding:12px 16px;display:flex;gap:8px;align-items:center">
+        <h2>Choose Game</h2>
+        <div style="margin-left:auto" class="muted">Scroll to see more</div>
+      </div>
+    </header>
+    <div class="games" id="gameButtons"></div>
+  </aside>
+
+  <main>
+    <section class="panel">
+      <div id="sentence" class="sentence"></div>
+      <div id="meta" class="meta"></div>
+    </section>
+
+    <section class="panel" id="focusStep1">
+      <div><strong>Step 1.</strong> Click all tokens that match this game (then answer sub-questions below). Click again to unselect.</div>
+      <div class="q"><button id="checkSelect">Check selection</button> <span id="selFeedback"></span></div>
+    </section>
+
+    <section class="panel" id="focusStep2">
+      <div><strong>Step 2.</strong> For each selected token, answer:</div>
+      <div id="perCard"></div>
+      <div class="q"><button id="checkKinds">Check answers</button> <span id="kindFeedback"></span></div>
+    </section>
+
+    <section class="panel" id="fullPanel" style="display:none">
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+        <strong>Full sentence: label every token</strong>
+        <span class="muted">Categories: verb, auxiliary, noun, pronoun, adjective, adverb, preposition, conjunction, interjection, other</span>
+      </div>
+      <div class="q"><div class="full-grid" id="fullGrid"></div></div>
+      <div class="q"><button id="fullCheck">Check all</button> <span id="fullFeedback"></span></div>
+    </section>
+
+    <section class="panel">
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <div style="flex:1 1 360px; border:1px solid var(--b); border-radius:12px; padding:12px; background:#fdfdfd;">
+          <h4 id="defTitle" style="margin:0 0 6px; font-size:16px;">What am I looking for?</h4>
+          <div id="defOverview" class="muted"></div>
+        </div>
+        <div style="flex:1 1 360px; border:1px solid var(--b); border-radius:12px; padding:12px; background:#fdfdfd;">
+          <h4 style="margin:0 0 6px; font-size:16px;">Common subtypes & tips</h4>
+          <ul id="defList" style="margin:6px 0 0 18px;"></ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+/* ======= Set your backend URL here ======= */
+const API_BASE = "https://YOUR-BACKEND-URL"; // will replace in a later step
+
+const api = (p, params={}) => fetch(`${API_BASE}${p}` + (Object.keys(params).length?`?${new URLSearchParams(params)}`:''));
+
+/* Definitions */
+const DEFINITIONS = {
+  verbs:{title:"What is a verb?",overview:"A verb tells what someone or something does, experiences, or is. Verbs express action (run, build), occurrence (happen, occur), or state (be, seem). In real sentences, verbs often appear with auxiliaries (will go, has been working) or as phrasal verbs (check out, look after).",points:["<strong>Action / Occurrence / State</strong> — judge meaning in context.","<strong>Transitive vs. intransitive</strong> — transitive verbs take an object (She read <em>the book</em>); in passive voice the object becomes the subject.","<strong>Linking verbs</strong> — <em>be, seem, become</em> link the subject to a complement (She <em>is</em> happy).","<strong>Phrasal verbs</strong> — verb + particle that changes meaning (<em>give up</em>, <em>check out</em>).","<strong>Note</strong> — auxiliaries (including modals) are graded in the Auxiliaries game."]},
+  auxiliaries:{title:"What is an auxiliary (helping verb)?",overview:"An auxiliary supports a main verb to show tense, aspect, voice, mood, or emphasis. The core helpers are <em>be</em>, <em>have</em>, <em>do</em>, plus the modals (<em>can, could, may, might, must, shall, should, will, would</em>).",points:["<strong>Modal</strong> — mood/possibility/obligation (can, must, should...).","<strong>Perfect</strong> — <em>have</em> + past participle (has finished).","<strong>Progressive</strong> — <em>be</em> + present participle (is running).","<strong>Passive</strong> — <em>be</em> + past participle (was chosen).","<strong>Do-support</strong> — questions/negation/emphasis (Did you go?)."]},
+  nouns:{title:"What is a noun?",overview:"A noun names a person, place, thing, or idea (teacher, city, laptop, freedom). Nouns can be proper or common, concrete or abstract, count or noncount, and may be collective or possessive.",points:["<strong>Proper vs. common</strong> — names (Canada, Omar) vs general terms (country, person).","<strong>Concrete vs. abstract</strong> — perceptible (table) vs ideas/qualities (justice).","<strong>Count vs. noncount</strong> — countable items (two cars) vs mass nouns (some water).","<strong>Collective</strong> — groups treated as units (team, committee).","<strong>Possessive</strong> — marked with ’s or an apostrophe (teacher’s, players’)."]},
+  pronouns:{title:"What is a pronoun?",overview:"A pronoun stands in for a noun or noun phrase (she, it, they, which, that, myself). Type and form depend on role and meaning.",points:["<strong>Personal</strong> — I/we/you/he/she/they (subjective) vs me/us/him/her/them (objective).","<strong>Possessive</strong> — my/your/his (dependent) vs mine/yours/hers (absolute).","<strong>Demonstrative</strong> — this, that, these, those.","<strong>Interrogative</strong> — who, whom, whose, which, what.","<strong>Relative</strong> — who/which/that introducing clauses.","<strong>Reflexive/Intensive</strong> — myself, yourself, etc.","<strong>Reciprocal</strong> — each other, one another.","<strong>Indefinite</strong> — someone, anyone, few, many, none, all."]},
+  adjectives:{title:"What is an adjective?",overview:"Adjectives describe nouns or pronouns — they tell you <em>what kind</em>, <em>which one</em>, <em>how many</em>, or <em>how something is</em>. They appear before nouns (a <em>blue</em> car) or after linking verbs (the car is <em>blue</em>).",points:["<strong>Common vs. proper</strong> — <em>Canadian</em> literature (proper) vs <em>interesting</em> book (common).","<strong>Degree</strong> — positive (<em>fast</em>), comparative (<em>faster</em>), superlative (<em>fastest</em>).","<strong>Tests</strong> — often answer: which one? what kind? how many? how much?"]},
+  adverbs:{title:"What is an adverb?",overview:"Adverbs modify verbs, adjectives, other adverbs, or whole sentences. They tell you <em>how</em>, <em>when</em>, <em>where</em>, <em>how often</em>, or <em>to what extent</em> (quickly, yesterday, here, often, very).",points:["<strong>Targets</strong> — verb (runs <em>quickly</em>), adjective (<em>very</em> tall), adverb (<em>quite</em> easily), sentence (<em>Fortunately</em>, ...).","<strong>Degree</strong> — positive/comparative/superlative.","<strong>Conjunctive adverbs</strong> — however, therefore, moreover connect clauses."]},
+  prepositions:{title:"What is a preposition?",overview:"A preposition shows a relationship in time, space, or logic between its object and another word (in, on, at, by, with, for, to). It heads a prepositional phrase (PP): <em>in the morning</em>, <em>with my friends</em>.",points:["PPs typically modify nouns or verbs (adjectival/adverbial function).","The object of a preposition is usually a noun phrase."]},
+  conjunctions:{title:"What is a conjunction?",overview:"A conjunction connects words, phrases, or clauses. It signals coordination, subordination, or linkage.",points:["<strong>Coordinating</strong> (FANBOYS): for, and, nor, but, or, yet, so.","<strong>Subordinating</strong>: because, although, if, when, since, while, after.","<strong>Conjunctive adverbs</strong>: however, therefore, moreover, consequently."]},
+  interjections:{title:"What is an interjection?",overview:"A short exclamation that expresses emotion or reaction (wow, oh, hey, alas). Often stands apart from the sentence with punctuation.",points:["It’s normal for many sentences to have none."]},
+  full:{title:"Full sentence labeling",overview:"Label every token as verb, auxiliary, noun, pronoun, adjective, adverb, preposition, conjunction, interjection, or other.",points:["Auxiliaries get their own label; punctuation/determiners/particles can be ‘other’ for this game."]},
+  noun_phrases:{title:"What is a noun phrase (NP)?",overview:"A noun phrase is a unit centered on a head noun (or pronoun) plus its determiners and modifiers. It can act as subject, object, complement, appositive, or object of a preposition.",points:["<strong>Basic shape</strong> — [Determiner] + [Modifiers] + <strong>Head Noun</strong> [+ Post-modifiers].","<strong>Premodifiers</strong> — adjectives, compounds, quantifiers, possessives.","<strong>Post-modifiers</strong> — prepositional phrases (<em>in the red jacket</em>), relative clauses.","<strong>Functions</strong> — subject, (direct) object, object of prep, complement, appositive.","<strong>Tip</strong> — in this game, click the <em>head word</em> to open the NP card."]},
+  clauses:{title:"What is a clause?",overview:"A clause contains (at least) a subject and a predicate (verb). An independent clause can stand alone; subordinate clauses (adverbial, complement, relative, etc.) depend on another clause.",points:["<strong>Independent</strong> — main clause with ROOT verb.","<strong>Adverbial</strong> — introduced by a subordinator (because, when, if...).","<strong>Complement</strong> — fills a slot of a verb/adjective (that-clause, to-infinitive).","<strong>Relative</strong> — modifies a noun (who/which/that...).","<strong>Finite vs. non-finite</strong> — finite has tense/person agreement; non-finite uses <em>to</em>/participles."]}
+};
+
+/* Games registry */
+const GAMES = [
+  { id:"verbs",         title:"Focus: Verbs",          section:"pos",     goldGetter: a=>a.verbs,        card: verbCard,        key: verbKey,        defs: DEFINITIONS.verbs,         mode:"focus" },
+  { id:"auxiliaries",   title:"Focus: Auxiliaries",    section:"pos",     goldGetter: a=>a.auxiliaries,  card: auxCard,         key: auxKey,         defs: DEFINITIONS.auxiliaries,   mode:"focus" },
+  { id:"nouns",         title:"Focus: Nouns",          section:"pos",     goldGetter: a=>a.nouns,        card: nounCard,        key: nounKey,        defs: DEFINITIONS.nouns,         mode:"focus" },
+  { id:"pronouns",      title:"Focus: Pronouns",       section:"pos",     goldGetter: a=>a.pronouns,     card: pronounCard,     key: pronounKey,     defs: DEFINITIONS.pronouns,      mode:"focus" },
+  { id:"adjectives",    title:"Focus: Adjectives",     section:"pos",     goldGetter: a=>a.adjectives,   card: adjectiveCard,   key: adjectiveKey,   defs: DEFINITIONS.adjectives,    mode:"focus" },
+  { id:"adverbs",       title:"Focus: Adverbs",        section:"pos",     goldGetter: a=>a.adverbs,      card: adverbCard,      key: adverbKey,      defs: DEFINITIONS.adverbs,       mode:"focus" },
+  { id:"prepositions",  title:"Focus: Prepositions",   section:"pos",     goldGetter: a=>a.prepositions, card: prepositionCard, key: prepositionKey, defs: DEFINITIONS.prepositions,   mode:"focus" },
+  { id:"conjunctions",  title:"Focus: Conjunctions",   section:"pos",     goldGetter: a=>a.conjunctions, card: conjunctionCard, key: conjunctionKey, defs: DEFINITIONS.conjunctions,   mode:"focus" },
+  { id:"interjections", title:"Focus: Interjections",  section:"pos",     goldGetter: a=>a.interjections,card: interjectionCard,key: interjectionKey,defs: DEFINITIONS.interjections,  mode:"focus" },
+  { id:"full",          title:"Full sentence (All POS)", section:"pos",   goldGetter: a=>a.pos_labels,   card: null,            key: null,           defs: DEFINITIONS.full,           mode:"full" },
+  { id:"noun_phrases",  title:"Phrases: Noun Phrases", section:"phrases", goldGetter: a=>a.noun_phrases, card: npCard,          key: npKey,          defs: DEFINITIONS.noun_phrases,   mode:"focus" },
+  { id:"clauses",       title:"Clauses: Identify & Type", section:"clauses", goldGetter: a=>a.clauses,   card: clauseCard,      key: clauseKey,      defs: DEFINITIONS.clauses,        mode:"focus" },
+];
+
+let currentGame = GAMES[0], current=null, selectedIdxs=new Set(), goldIdxs=new Set();
+
+const sentenceBox = document.getElementById('sentence');
+const perCard = document.getElementById('perCard');
+const selFeedback = document.getElementById('selFeedback');
+const kindFeedback = document.getElementById('kindFeedback');
+const gameTitle = document.getElementById('gameTitle');
+const drawer = document.getElementById('drawer');
+const gameButtons = document.getElementById('gameButtons');
+const defTitle = document.getElementById('defTitle');
+const defOverview = document.getElementById('defOverview');
+const defList = document.getElementById('defList');
+const focusStep1 = document.getElementById('focusStep1');
+const focusStep2 = document.getElementById('focusStep2');
+const fullPanel = document.getElementById('fullPanel');
+const fullGrid = document.getElementById('fullGrid');
+const fullFeedback = document.getElementById('fullFeedback');
+
+function openDrawer(){ drawer.classList.add('open'); drawer.setAttribute('aria-hidden','false'); document.body.classList.add('noscroll'); }
+function closeDrawer(){ drawer.classList.remove('open'); drawer.setAttribute('aria-hidden','true'); document.body.classList.remove('noscroll'); }
+document.getElementById('hamburger').addEventListener('click', ()=> drawer.classList.contains('open') ? closeDrawer() : openDrawer());
+
+function buildGameButtons(){
+  gameButtons.innerHTML = '';
+  const sections = [{id:"pos",title:"Parts of Speech"},{id:"phrases",title:"Phrases"},{id:"clauses",title:"Clauses"}];
+  sections.forEach(sec=>{
+    const group = document.createElement('div'); group.className='group';
+    const title = document.createElement('div'); title.className='title'; title.textContent = sec.title;
+    const body = document.createElement('div'); body.className='body';
+    GAMES.filter(g=>g.section===sec.id).forEach(g=>{
+      const b = document.createElement('button'); b.textContent = g.title;
+      b.addEventListener('click', ()=>{ setGame(g.id); closeDrawer(); });
+      body.appendChild(b);
+    });
+    group.appendChild(title); group.appendChild(body); gameButtons.appendChild(group);
+  });
+}
+buildGameButtons();
+
+function setGame(id){
+  const g = GAMES.find(x=>x.id===id) || GAMES[0];
+  currentGame = g; gameTitle.textContent = g.title;
+  defTitle.textContent = g.defs.title; defOverview.innerHTML = g.defs.overview; defList.innerHTML='';
+  g.defs.points.forEach(p=>{ const li=document.createElement('li'); li.innerHTML=p; defList.appendChild(li); });
+  if (g.mode==="full"){ focusStep1.style.display="none"; focusStep2.style.display="none"; fullPanel.style.display=""; }
+  else { focusStep1.style.display=""; focusStep2.style.display=""; fullPanel.style.display="none"; }
+  selectedIdxs.clear(); goldIdxs.clear(); perCard.innerHTML=''; selFeedback.textContent=''; kindFeedback.textContent=''; fullGrid.innerHTML=''; fullFeedback.textContent='';
+  if (current){ refreshGold(); if (g.mode==="full") renderFullGrid(); }
+}
+
+async function loadSentence(){
+  document.getElementById('status').textContent='Loading...';
+  selectedIdxs.clear(); goldIdxs.clear(); perCard.innerHTML=''; selFeedback.textContent=''; kindFeedback.textContent=''; fullGrid.innerHTML=''; fullFeedback.textContent='';
+  const source = document.getElementById('source').value;
+  const s = await (await api('/sentence',{source})).json();
+  const analysis = await (await api('/analyze',{text:s.text})).json();
+  current = analysis; refreshGold(); renderSentence(s); if (currentGame.mode==="full") renderFullGrid();
+  document.getElementById('status').textContent='';
+}
+
+function refreshGold(){ goldIdxs.clear(); (currentGame.goldGetter(current)||[]).forEach(x=>goldIdxs.add(x.i)); renderPerCards(); }
+
+function renderSentence(s){
+  sentenceBox.innerHTML=''; current.tokens.forEach(t=>{
+    const span=document.createElement('span'); span.className='tok'; span.textContent=t.text; span.dataset.i=t.i;
+    span.title = (currentGame.id==='noun_phrases'||currentGame.id==='clauses')?'Click the head word':'';
+    span.addEventListener('click', ()=>{
+      if (currentGame.mode==="full") return;
+      if (selectedIdxs.has(t.i)) selectedIdxs.delete(t.i); else selectedIdxs.add(t.i);
+      span.classList.toggle('selected'); renderPerCards();
+    });
+    sentenceBox.appendChild(span); sentenceBox.append(' ');
+  });
+  document.getElementById('meta').textContent = s.source==='local' ? 'Local fallback sentence (offline demo)' : `Source: ${s.source}`;
+}
+
+function renderPerCards(){
+  if (currentGame.mode==="full") return;
+  perCard.innerHTML=''; const goldByIdx=indexByI(currentGame.goldGetter(current));
+  [...selectedIdxs].sort((a,b)=>a-b).forEach(i=>{ const obj=goldByIdx.get(i); if (obj) perCard.appendChild(currentGame.card(obj)); });
+}
+function indexByI(arr){ const m=new Map(); (arr||[]).forEach(o=>m.set(o.i,o)); return m; }
+
+function addWhyButton(container, lines){
+  const btn=document.createElement('button'); btn.textContent="Why?"; btn.style.marginTop="6px";
+  const box=document.createElement('div'); box.className='why'; box.textContent=(lines&&lines.length)?("• "+lines.join("\n• ")):"• No details.";
+  btn.addEventListener('click', ()=> box.classList.toggle('show')); container.appendChild(btn); container.appendChild(box);
+}
+
+function pill(txt){ return `<div class="pill" data-val="${txt}">${txt}</div>`; }
+function wirePills(root){
+  root.querySelectorAll('.row').forEach(row=>{
+    row.addEventListener('click',(e)=>{
+      const p=e.target.closest('.pill'); if(!p) return;
+      row.querySelectorAll('.pill').forEach(x=>x.classList.remove('sel')); p.classList.add('sel'); row.dataset.sel=p.dataset.val;
+    });
+  });
+}
+
+function verbCard(v){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.vidx=v.i;
+  div.innerHTML=`<div><strong>Verb:</strong> <code>${v.text}</code> (lemma: ${v.lemma})</div>
+  <div class="meta">Auxiliaries: ${v.aux_chain.join(' ')||'—'} | POS: ${v.pos}/${v.tag}</div>
+  <div class="q"><strong>Action, occurrence, or state?</strong></div><div class="row" data-kind="soa">${['action','occurrence','state'].map(pill).join('')}</div>
+  <div class="q"><strong>Transitive or intransitive here?</strong></div><div class="row" data-kind="transitivity">${['transitive','intransitive'].map(pill).join('')}</div>
+  <div class="q"><strong>Linking or action (in this context)?</strong></div><div class="row" data-kind="linking">${['linking','action'].map(pill).join('')}</div>
+  <div class="q"><strong>Modal verb?</strong></div><div class="row" data-kind="modal">${['yes','no'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,v.why); return div; }
+function verbKey(v){ return { soa:v.soa, transitivity:v.transitivity, linking:v.is_linking?'linking':'action', modal:v.is_modal?'yes':'no' }; }
+
+function auxCard(a){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=a.i;
+  div.innerHTML=`<div><strong>Auxiliary:</strong> <code>${a.text}</code> (lemma: ${a.lemma})</div>
+  <div class="q"><strong>Role?</strong></div><div class="row" data-kind="role">${['modal','perfect','progressive','passive','do-support','other'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,a.why); return div; }
+function auxKey(a){ return { role:a.role }; }
+
+function nounCard(n){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=n.i;
+  div.innerHTML=`<div><strong>Noun:</strong> <code>${n.text}</code> (lemma: ${n.lemma})</div>
+  <div class="q"><strong>Proper or common?</strong></div><div class="row" data-kind="proper">${['proper','common'].map(pill).join('')}</div>
+  <div class="q"><strong>Concrete or abstract?</strong></div><div class="row" data-kind="concreteness">${['concrete','abstract'].map(pill).join('')}</div>
+  <div class="q"><strong>Countability?</strong></div><div class="row" data-kind="count">${['count','noncount'].map(pill).join('')}</div>
+  <div class="q"><strong>Collective?</strong></div><div class="row" data-kind="collective">${['yes','no'].map(pill).join('')}</div>
+  <div class="q"><strong>Possessive?</strong></div><div class="row" data-kind="possessive">${['yes','no'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,n.why); return div; }
+function nounKey(n){ return { proper:n.type, concreteness:n.concreteness, count:n.countability, collective:n.collective?'yes':'no', possessive:n.possessive?'yes':'no' }; }
+
+function pronounCard(p){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=p.i;
+  div.innerHTML=`<div><strong>Pronoun:</strong> <code>${p.text}</code> (lemma: ${p.lemma})</div>
+  <div class="q"><strong>Type?</strong></div><div class="row" data-kind="type">${['personal','possessive','demonstrative','interrogative','relative','reflexive','reciprocal','indefinite','other'].map(pill).join('')}</div>
+  <div class="q"><strong>Personal pronoun case (if personal)?</strong></div><div class="row" data-kind="case">${['subjective','objective','(n/a)'].map(pill).join('')}</div>
+  <div class="q"><strong>Possessive form (if possessive)?</strong></div><div class="row" data-kind="poss">${['absolute','dependent','(n/a)'].map(pill).join('')}</div>
+  <div class="q"><strong>Reflexive / Intensive form?</strong></div><div class="row" data-kind="refl">${['yes','no'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,p.why); return div; }
+function pronounKey(p){ return { type:p.type, case:p.type==='personal'?(p.case||'(n/a)'):'(n/a)', poss:p.type==='possessive'?(p.possessive_form||'dependent'):'(n/a)', refl:p.reflexive_or_intensive?'yes':'no' }; }
+
+function adjectiveCard(a){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=a.i;
+  div.innerHTML=`<div><strong>Adjective:</strong> <code>${a.text}</code> (lemma: ${a.lemma})</div>
+  <div class="q"><strong>Type?</strong></div><div class="row" data-kind="type">${['proper','common'].map(pill).join('')}</div>
+  <div class="q"><strong>Degree?</strong></div><div class="row" data-kind="degree">${['positive','comparative','superlative'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,a.why); return div; }
+function adjectiveKey(a){ return { type:a.type, degree:a.degree }; }
+
+function adverbCard(a){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=a.i;
+  div.innerHTML=`<div><strong>Adverb:</strong> <code>${a.text}</code> (lemma: ${a.lemma})</div>
+  <div class="q"><strong>Modifies?</strong></div><div class="row" data-kind="mod">${['verb','adjective','adverb','sentence'].map(pill).join('')}</div>
+  <div class="q"><strong>Degree?</strong></div><div class="row" data-kind="degree">${['positive','comparative','superlative'].map(pill).join('')}</div>
+  <div class="q"><strong>Conjunctive adverb?</strong></div><div class="row" data-kind="conj">${['yes','no'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,a.why); return div; }
+function adverbKey(a){ return { mod:a.modifies, degree:a.degree, conj:a.conjunctive?'yes':'no' }; }
+
+function prepositionCard(p){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=p.i;
+  div.innerHTML=`<div><strong>Preposition:</strong> <code>${p.text}</code> (lemma: ${p.lemma})</div>
+  <div class="q"><strong>Type?</strong></div><div class="row" data-kind="type">${['preposition'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,p.why); return div; }
+function prepositionKey(p){ return { type:p.type }; }
+
+function conjunctionCard(c){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=c.i;
+  div.innerHTML=`<div><strong>Conjunction:</strong> <code>${c.text}</code> (lemma: ${c.lemma})</div>
+  <div class="q"><strong>Type?</strong></div><div class="row" data-kind="type">${['coordinating','subordinating','conjunctive_adverb','other'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,c.why); return div; }
+function conjunctionKey(c){ return { type:c.type }; }
+
+function interjectionCard(i){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=i.i;
+  div.innerHTML=`<div><strong>Interjection:</strong> <code>${i.text}</code> (lemma: ${i.lemma})</div>
+  <div class="q"><strong>Is interjection?</strong></div><div class="row" data-kind="is">${['yes','no'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,i.why); return div; }
+function interjectionKey(i){ return { is:i.is_interjection?'yes':'no' }; }
+
+function npCard(np){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=np.i;
+  div.innerHTML=`<div><strong>Noun Phrase (head <code>${np.head}</code>):</strong> “${np.span}”</div>
+  <div class="q"><strong>Function in the clause?</strong></div><div class="row" data-kind="role">${['subject','object','object_of_preposition','complement','appositive','other'].map(pill).join('')}</div>
+  <div class="q"><strong>Contains a determiner?</strong></div><div class="row" data-kind="det">${['yes','no'].map(pill).join('')}</div>
+  <div class="q"><strong>Contains a PP post-modifier?</strong></div><div class="row" data-kind="pp">${['yes','no'].map(pill).join('')}</div>
+  <div class="q"><strong>Head type?</strong></div><div class="row" data-kind="head_type">${['proper','common'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,np.why); return div; }
+function npKey(np){ return { role:np.role, det:np.has_det?'yes':'no', pp:np.pp_postmod?'yes':'no', head_type:np.head_type }; }
+
+function clauseCard(cl){ const div=document.createElement('div'); div.className='panel'; div.style.marginBottom='8px'; div.dataset.idx=cl.i;
+  div.innerHTML=`<div><strong>Clause:</strong> “${cl.text}”</div>
+  <div class="q"><strong>Type?</strong></div><div class="row" data-kind="type">${['independent','adverbial','complement','relative','attributive','parataxis','subordinate'].map(pill).join('')}</div>
+  <div class="q"><strong>Finite clause?</strong></div><div class="row" data-kind="finite">${['yes','no'].map(pill).join('')}</div>
+  <div class="q"><strong>Has a subordinator/rel. marker?</strong></div><div class="row" data-kind="marker">${['yes','no'].map(pill).join('')}</div>`;
+  wirePills(div); addWhyButton(div,cl.why); return div; }
+function clauseKey(cl){ return { type:cl.type, finite:cl.finite?'yes':'no', marker:cl.has_marker?'yes':'no' }; }
+
+document.getElementById('checkSelect').addEventListener('click', ()=>{
+  const gold=[...goldIdxs].sort((a,b)=>a-b).join(','), pick=[...selectedIdxs].sort((a,b)=>a-b).join(',');
+  if (gold===pick){ selFeedback.innerHTML=`<span class="ok">Correct selection.</span>`; }
+  else {
+    const missing=[...goldIdxs].filter(i=>!selectedIdxs.has(i)), extra=[...selectedIdxs].filter(i=>!goldIdxs.has(i));
+    const missText=missing.length?`Missed: ${missing.map(i=>current.tokens[i].text).join(', ')}`:''; const extraText=extra.length?`Not target: ${extra.map(i=>current.tokens[i].text).join(', ')}`:'';
+    selFeedback.innerHTML=`<span class="bad">Not quite.</span> ${[missText,extraText].filter(Boolean).join(' | ')}`;
+  }
+});
+document.getElementById('checkKinds').addEventListener('click', ()=>{
+  const fb=document.getElementById('kindFeedback'), goldByIdx=indexByI(currentGame.goldGetter(current)); let total=0, correct=0;
+  document.querySelectorAll('#perCard > .panel').forEach(card=>{
+    const i=Number(card.dataset.idx||card.dataset.vidx), obj=goldByIdx.get(i); if(!obj) return;
+    const want=currentGame.key(obj); card.querySelectorAll('.row').forEach(row=>{
+      const kind=row.dataset.kind, picked=row.dataset.sel; if(!kind||picked===undefined) return;
+      if(want[kind]!==undefined){ total++; if(picked===String(want[kind])) correct++; }
+    });
+  });
+  if (total===0){ fb.innerHTML=`<span class="bad">Answer the sub-questions first.</span>`; return; }
+  fb.innerHTML=(correct===total)?`<span class="ok">Perfect (${correct}/${total}).</span>`:`<span class="bad">You got ${correct} of ${total}. Adjust and try again.</span>`;
+});
+
+const FULL_OPTIONS=["verb","auxiliary","noun","pronoun","adjective","adverb","preposition","conjunction","interjection","other"];
+function renderFullGrid(){
+  fullGrid.innerHTML=''; const goldByIdx=indexByI(current.pos_labels);
+  current.tokens.forEach(t=>{
+    const card=document.createElement('div'); card.className='chip'; card.dataset.i=t.i;
+    const w=document.createElement('div'); w.className='w'; w.textContent=t.text;
+    const sel=document.createElement('select'); FULL_OPTIONS.forEach(opt=>{ const o=document.createElement('option'); o.value=opt; o.textContent=opt; sel.appendChild(o); });
+    const gold=goldByIdx.get(t.i)?.gold; if(gold) sel.value=gold;
+    const whyBtn=document.createElement('button'); whyBtn.textContent="Why?"; whyBtn.style.marginTop="4px";
+    const whyBox=document.createElement('div'); whyBox.className='why'; const lines=goldByIdx.get(t.i)?.why||[]; whyBox.textContent=lines.length?("• "+lines.join("\n• ")):"• No details.";
+    whyBtn.addEventListener('click', ()=> whyBox.classList.toggle('show'));
+    card.appendChild(w); card.appendChild(sel); card.appendChild(whyBtn); card.appendChild(whyBox); fullGrid.appendChild(card);
+  });
+}
+document.getElementById('fullCheck').addEventListener('click', ()=>{
+  const goldByIdx=indexByI(current.pos_labels); let total=0, correct=0;
+  document.querySelectorAll('#fullGrid .chip').forEach(chip=>{
+    const i=Number(chip.dataset.i), sel=chip.querySelector('select').value, gold=goldByIdx.get(i)?.gold;
+    total++; if (sel===gold){ correct++; chip.classList.remove('wrong'); chip.classList.add('correct'); }
+    else { chip.classList.remove('correct'); chip.classList.add('wrong'); }
+  });
+  fullFeedback.innerHTML=(correct===total)?`<span class="ok">Perfect (${correct}/${total}).</span>`:`<span class="bad">${correct} of ${total} correct.</span>`;
+});
+
+function refreshGold(){ goldIdxs.clear(); (currentGame.goldGetter(current)||[]).forEach(x=>goldIdxs.add(x.i)); renderPerCards(); }
+function buildMenuAndStart(){ setGame('verbs'); loadSentence(); }
+buildMenuAndStart();
+</script>
+</body>
+</html>
